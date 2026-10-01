@@ -1172,75 +1172,84 @@ router.patch(
   }
 );
 
-// ============================================================
-// STAR / UNSTAR
-// ============================================================
+// =========================================================
+// STAR
+// =========================================================
 
 router.patch(
-  "/message/:id/star",
-  authMiddleware,
-  async (req, res) => {
-    try {
-      const result =
-        await pool.query(
-          `UPDATE messages m
+    "/:id/star",
+    authMiddleware,
+    async (req, res) => {
 
-           SET is_starred =
-             NOT m.is_starred
+        try {
 
-           WHERE m.id = $1
+            const {
+                is_starred
+            } = req.body;
 
-             AND (
-               m.sender_id = $2
+            const result =
+                await pool.query(
+                    `UPDATE messages m
+                     SET is_starred = $1
+                     WHERE
+                        m.id = $2
+                        AND (
+                            m.sender_id = $3
+                            OR EXISTS (
+                                SELECT 1
+                                FROM message_recipients mr
+                                WHERE
+                                    mr.message_id = m.id
+                                    AND mr.recipient_id = $3
+                            )
+                        )
+                     RETURNING id, is_starred`,
+                    [
+                        Boolean(is_starred),
+                        Number(req.params.id),
+                        req.user.userId
+                    ]
+                );
 
-               OR EXISTS (
-                 SELECT 1
+            if (
+                result.rows.length === 0
+            ) {
 
-                 FROM message_recipients mr
+                return res.status(404).json({
+                    message:
+                        "Message not found."
+                });
 
-                 WHERE mr.message_id = m.id
-                   AND mr.recipient_id = $2
-               )
-             )
+            }
 
-           RETURNING
-             id,
-             is_starred`,
-          [
-            Number(req.params.id),
-            userId(req),
-          ]
-        );
+            res.json({
 
-      if (!result.rowCount) {
-        return res.status(404).json({
-          message:
-            "Message not found.",
-        });
-      }
+                message:
+                    "Star status updated.",
 
-      res.json({
-        message:
-          "Star updated.",
+                data:
+                    result.rows[0]
 
-        is_starred:
-          result.rows[0]
-            .is_starred,
-      });
-    } catch (error) {
-      console.error(
-        "Star error:",
-        error
-      );
+            });
 
-      res.status(500).json({
-        message:
-          "Failed to update star.",
-      });
+        } catch (error) {
+
+            console.error(
+                "Star status error:",
+                error
+            );
+
+            res.status(500).json({
+
+                message:
+                    "Failed to update star status."
+
+            });
+
+        }
+
     }
-  }
 );
-
 // ============================================================
 // DOWNLOAD ATTACHMENT
 // ============================================================
