@@ -12,19 +12,32 @@ async function verifyAccessToken(accessToken) {
     }
 
     const cleanToken = accessToken.trim();
+    const cleanAuthkey = authkey.trim();
 
     if (!cleanToken) {
         throw new Error("MSG91 access token is empty.");
+    }
+
+    if (!cleanAuthkey) {
+        throw new Error("MSG91 Authkey is empty.");
     }
 
     try {
         console.log("MSG91: verifying access token...");
         console.log("MSG91: access token received from app: YES");
 
+        // NEVER print the actual Authkey.
+        console.log(
+            "MSG91: Authkey configured:",
+            Boolean(cleanAuthkey),
+            "length:",
+            cleanAuthkey.length
+        );
+
         const response = await axios.post(
             "https://control.msg91.com/api/v5/widget/verifyAccessToken",
             {
-                authkey: authkey.trim(),
+                authkey: cleanAuthkey,
                 "access-token": cleanToken
             },
             {
