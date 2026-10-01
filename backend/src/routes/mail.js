@@ -139,181 +139,7 @@ router.get(
   authMiddleware,
   async (req, res) => {
     try {
-      const result =
-        await pool.query(
-            `SELECT
-                m.id,
-                m.conversation_id,
-                m.sender_id,
-                m.subject,
-                m.body,
-                m.is_read,
-                m.is_starred,
-                m.reply_to_message_id,
-                m.created_at,
-
-                u.phone_number AS sender_phone,
-                u.email_address AS sender_email,
-                u.display_name AS sender_name
-
-            FROM messages m
-
-            JOIN users u
-                ON u.id = m.sender_id
-
-            WHERE
-                m.conversation_id = $1
-                AND m.is_deleted = false
-
-            ORDER BY
-                m.created_at ASC`,
-            [conversationId]
-        );
-
-
-    const messageIds =
-        result.rows.map(
-            (message) => message.id
-        );
-
-    let attachments = [];
-
-    if (messageIds.length > 0) {
-        const attachmentResult =
-            await pool.query(
-                `SELECT
-                    id,
-                    message_id,
-                    file_name,
-                    mime_type,
-                    file_size,
-                    created_at
-                FROM message_attachments
-                WHERE message_id = ANY($1::int[])
-                ORDER BY created_at ASC`,
-                [messageIds]
-            );
-
-        attachments =
-            attachmentResult.rows;
-    }
-
-
-    res.json({
-        messages:
-            result.rows.map(
-                (message) => ({
-                    ...message,
-                    attachments:
-                        attachments.filter(
-                            (attachment) =>
-                                Number(attachment.message_id) ===
-                                Number(message.id)
-                        ),
-                })
-            ),
-    });
-    } catch (error) {
-      console.error(
-        "Inbox error:",
-        error
-      );
-
-      res.status(500).json({
-        message: "Failed to load inbox.",
-      });
-    }
-  }
-);
-
-// ============================================================
-// SENT
-// ============================================================
-
-router.get(
-  "/sent",
-  authMiddleware,
-  async (req, res) => {
-    try {
-      const result = await pool.query(
-        `SELECT
-            m.id,
-            m.conversation_id,
-            m.sender_id,
-            m.subject,
-            m.body,
-            m.is_read,
-            m.is_starred,
-            m.reply_to_message_id,
-            m.created_at,
-
-            u.phone_number AS recipient_phone,
-            u.email_address AS recipient_email,
-            u.display_name AS recipient_name
-
-         FROM messages m
-
-         JOIN message_recipients mr
-           ON mr.message_id = m.id
-
-         JOIN users u
-           ON u.id = mr.recipient_id
-
-         WHERE m.sender_id = $1
-           AND m.is_deleted = false
-
-         ORDER BY m.created_at DESC`,
-        [userId(req)]
-      );
-
-      res.json({
-        messages: result.rows,
-      });
-    } catch (error) {
-      console.error(
-        "Sent error:",
-        error
-      );
-
-      res.status(500).json({
-        message: "Failed to load sent mail.",
-      });
-    }
-  }
-);
-
-// ============================================================
-// CONVERSATION
-// ============================================================
-
-router.get(
-  "/conversation/:id",
-  authMiddleware,
-  async (req, res) => {
-    try {
       const uid = userId(req);
-
-      const conversationId =
-        Number(req.params.id);
-
-      const member = await pool.query(
-        `SELECT 1
-         FROM conversation_members
-         WHERE conversation_id = $1
-           AND user_id = $2
-         LIMIT 1`,
-        [
-          conversationId,
-          uid,
-        ]
-      );
-
-      if (!member.rowCount) {
-        return res.status(403).json({
-          message:
-            "Not a conversation member.",
-        });
-      }
 
       const result = await pool.query(
         `SELECT
@@ -336,55 +162,258 @@ router.get(
          JOIN users u
            ON u.id = m.sender_id
 
-         WHERE m.conversation_id = $1
+         WHERE EXISTS (
+             SELECT 1
+             FROM message_recipients mr
+             WHERE mr.message_id = m.id
+               AND mr.recipient_id = $1
+         )
+
            AND m.is_deleted = false
 
-         ORDER BY m.created_at ASC`,
-        [conversationId]
+         ORDER BY m.created_at DESC`,
+        [uid]
       );
 
-      const ids =
+      const messageIds =
         result.rows.map(
-          (r) => r.id
+          (message) => message.id
         );
 
       let attachments = [];
 
-      if (ids.length) {
-        const a = await pool.query(
+      if (messageIds.length > 0) {
+        const attachmentResult =
+          await pool.query(
+            `SELECT
+                id,
+                message_id,
+                file_name,
+                mime_type,
+                file_size,
+                created_at
+
+             FROM message_attachments
+
+             WHERE message_id = ANY($1::int[])
+
+             ORDER BY created_at ASC`,
+            [messageIds]
+          );
+
+        attachments =
+          attachmentResult.rows;
+      }
+
+      res.json({
+        messages:
+          result.rows.map(
+            (message) => ({
+              ...message,
+
+              attachments:
+                attachments.filter(
+                  (attachment) =>
+                    Number(
+                      attachment.message_id
+                    ) ===
+                    Number(message.id)
+                ),
+            })
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Inbox error:",
+        error
+      );
+
+      res.status(500).json({
+        message:
+          "Failed to load inbox.",
+      });
+    }
+  }
+);
+
+// ============================================================
+// SENT
+// ============================================================
+
+router.get(
+  "/sent",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const result =
+        await pool.query(
           `SELECT
-              id,
-              message_id,
-              file_name,
-              mime_type,
-              file_size,
-              created_at
+              m.id,
+              m.conversation_id,
+              m.sender_id,
+              m.subject,
+              m.body,
+              m.is_read,
+              m.is_starred,
+              m.reply_to_message_id,
+              m.created_at,
 
-           FROM message_attachments
+              u.phone_number AS recipient_phone,
+              u.email_address AS recipient_email,
+              u.display_name AS recipient_name
 
-           WHERE message_id = ANY($1::int[])
+           FROM messages m
 
-           ORDER BY created_at ASC`,
-          [ids]
+           JOIN message_recipients mr
+             ON mr.message_id = m.id
+
+           JOIN users u
+             ON u.id = mr.recipient_id
+
+           WHERE m.sender_id = $1
+             AND m.is_deleted = false
+
+           ORDER BY m.created_at DESC`,
+          [userId(req)]
         );
 
-        attachments = a.rows;
+      res.json({
+        messages:
+          result.rows,
+      });
+    } catch (error) {
+      console.error(
+        "Sent error:",
+        error
+      );
+
+      res.status(500).json({
+        message:
+          "Failed to load sent mail.",
+      });
+    }
+  }
+);
+
+// ============================================================
+// CONVERSATION
+// ============================================================
+
+router.get(
+  "/conversation/:id",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const uid = userId(req);
+
+      const conversationId =
+        Number(req.params.id);
+
+      const member =
+        await pool.query(
+          `SELECT 1
+           FROM conversation_members
+           WHERE conversation_id = $1
+             AND user_id = $2
+           LIMIT 1`,
+          [
+            conversationId,
+            uid,
+          ]
+        );
+
+      if (!member.rowCount) {
+        return res.status(403).json({
+          message:
+            "Not a conversation member.",
+        });
       }
+
+      const result =
+        await pool.query(
+          `SELECT
+              m.id,
+              m.conversation_id,
+              m.sender_id,
+              m.subject,
+              m.body,
+              m.is_read,
+              m.is_starred,
+              m.reply_to_message_id,
+              m.created_at,
+
+              u.phone_number AS sender_phone,
+              u.email_address AS sender_email,
+              u.display_name AS sender_name
+
+           FROM messages m
+
+           JOIN users u
+             ON u.id = m.sender_id
+
+           WHERE m.conversation_id = $1
+             AND m.is_deleted = false
+
+           ORDER BY m.created_at ASC`,
+          [conversationId]
+        );
+
+      // --------------------------------------------------------
+      // GET ATTACHMENTS FOR ALL MESSAGES
+      // --------------------------------------------------------
+
+      const ids =
+        result.rows.map(
+          (message) => message.id
+        );
+
+      let attachments = [];
+
+      if (ids.length > 0) {
+        const attachmentResult =
+          await pool.query(
+            `SELECT
+                id,
+                message_id,
+                file_name,
+                mime_type,
+                file_size,
+                created_at
+
+             FROM message_attachments
+
+             WHERE message_id = ANY($1::int[])
+
+             ORDER BY created_at ASC`,
+            [ids]
+          );
+
+        attachments =
+          attachmentResult.rows;
+      }
+
+      // --------------------------------------------------------
+      // RETURN MESSAGES + ATTACHMENTS
+      // --------------------------------------------------------
 
       res.json({
         conversationId,
 
-        messages: result.rows.map(
-          (m) => ({
-            ...m,
+        messages:
+          result.rows.map(
+            (message) => ({
+              ...message,
 
-            attachments:
-              attachments.filter(
-                (a) =>
-                  Number(a.message_id) === Number(m.id)
-              ),
-          })
-        ),
+              attachments:
+                attachments.filter(
+                  (attachment) =>
+                    Number(
+                      attachment.message_id
+                    ) ===
+                    Number(message.id)
+                ),
+            })
+          ),
       });
     } catch (error) {
       console.error(
@@ -423,7 +452,8 @@ router.post(
       const subject =
         String(
           req.body.subject || ""
-        ).trim() || "(No subject)";
+        ).trim() ||
+        "(No subject)";
 
       const body =
         String(
@@ -437,7 +467,8 @@ router.post(
         cleanupFiles(files);
 
         return res.status(401).json({
-          message: "Unauthorized.",
+          message:
+            "Unauthorized.",
         });
       }
 
@@ -450,8 +481,6 @@ router.post(
         });
       }
 
-      // Message can contain text,
-      // attachments, or both.
       if (
         !body &&
         files.length === 0
@@ -539,9 +568,10 @@ router.post(
           receiver.phone_number
         );
 
-      await client.query("BEGIN");
+      await client.query(
+        "BEGIN"
+      );
 
-      // Create conversation
       const conversation =
         await client.query(
           `INSERT INTO conversations
@@ -559,7 +589,6 @@ router.post(
       const conversationId =
         conversation.rows[0].id;
 
-      // Add members
       await client.query(
         `INSERT INTO conversation_members
            (conversation_id, user_id)
@@ -574,7 +603,6 @@ router.post(
         ]
       );
 
-      // Create message
       const message =
         await client.query(
           `INSERT INTO messages
@@ -615,7 +643,6 @@ router.post(
       const messageId =
         message.rows[0].id;
 
-      // Add recipient
       await client.query(
         `INSERT INTO message_recipients
            (
@@ -635,7 +662,10 @@ router.post(
         ]
       );
 
-      // Save attachments
+      // --------------------------------------------------------
+      // SAVE ATTACHMENTS
+      // --------------------------------------------------------
+
       for (const file of files) {
         await client.query(
           `INSERT INTO message_attachments
@@ -711,16 +741,18 @@ router.post(
         messageId,
 
         attachments:
-          files.map((f) => ({
-            file_name:
-              f.originalname,
+          files.map(
+            (file) => ({
+              file_name:
+                file.originalname,
 
-            mime_type:
-              f.mimetype,
+              mime_type:
+                file.mimetype,
 
-            file_size:
-              f.size,
-          })),
+              file_size:
+                file.size,
+            })
+          ),
       });
     } catch (error) {
       try {
@@ -729,7 +761,9 @@ router.post(
         );
       } catch (_) {}
 
-      cleanupFiles(req.files);
+      cleanupFiles(
+        req.files
+      );
 
       console.error(
         "Send error:",
@@ -760,7 +794,8 @@ router.post(
       await pool.connect();
 
     try {
-      const uid = userId(req);
+      const uid =
+        userId(req);
 
       const originalMessageId =
         Number(
@@ -779,7 +814,8 @@ router.post(
         cleanupFiles(files);
 
         return res.status(401).json({
-          message: "Unauthorized.",
+          message:
+            "Unauthorized.",
         });
       }
 
@@ -792,10 +828,6 @@ router.post(
         });
       }
 
-      // Reply can contain:
-      // text only
-      // attachment only
-      // text + attachments
       if (
         !body &&
         files.length === 0
@@ -843,7 +875,6 @@ router.post(
       const original =
         originalResult.rows[0];
 
-      // Verify conversation membership
       const member =
         await client.query(
           `SELECT 1
@@ -909,7 +940,6 @@ router.post(
       const sender =
         senderResult.rows[0];
 
-      // Prevent duplicate reply
       const duplicate =
         await client.query(
           `SELECT id
@@ -960,7 +990,6 @@ router.post(
         "BEGIN"
       );
 
-      // Insert reply
       const reply =
         await client.query(
           `INSERT INTO messages
@@ -1002,7 +1031,6 @@ router.post(
       const replyId =
         reply.rows[0].id;
 
-      // Recipient
       await client.query(
         `INSERT INTO message_recipients
            (
@@ -1022,7 +1050,10 @@ router.post(
         ]
       );
 
-      // Reply attachments
+      // --------------------------------------------------------
+      // SAVE REPLY ATTACHMENTS
+      // --------------------------------------------------------
+
       for (const file of files) {
         await client.query(
           `INSERT INTO message_attachments
@@ -1066,7 +1097,6 @@ router.post(
         "COMMIT"
       );
 
-      // External email
       await sendExternalEmail({
         sender,
 
@@ -1078,14 +1108,14 @@ router.post(
             receiverEmail,
         },
 
-        subject: replySubject,
+        subject:
+          replySubject,
 
         body,
 
         files,
       });
 
-      // SMS notification
       try {
         await sendNewEmailSMS({
           phone:
@@ -1095,7 +1125,8 @@ router.post(
             sender.display_name ||
             sender.phone_number,
 
-          subject: replySubject,
+          subject:
+            replySubject,
         });
       } catch (e) {
         console.error(
@@ -1108,22 +1139,25 @@ router.post(
         message:
           "Reply sent successfully.",
 
-        messageId: replyId,
+        messageId:
+          replyId,
 
         conversationId:
           original.conversation_id,
 
         attachments:
-          files.map((f) => ({
-            file_name:
-              f.originalname,
+          files.map(
+            (file) => ({
+              file_name:
+                file.originalname,
 
-            mime_type:
-              f.mimetype,
+              mime_type:
+                file.mimetype,
 
-            file_size:
-              f.size,
-          })),
+              file_size:
+                file.size,
+            })
+          ),
       });
     } catch (error) {
       try {
@@ -1132,7 +1166,9 @@ router.post(
         );
       } catch (_) {}
 
-      cleanupFiles(req.files);
+      cleanupFiles(
+        req.files
+      );
 
       console.error(
         "Reply error:",
@@ -1208,84 +1244,77 @@ router.patch(
   }
 );
 
-// =========================================================
+// ============================================================
 // STAR
-// =========================================================
+// ============================================================
 
 router.patch(
-    "/:id/star",
-    authMiddleware,
-    async (req, res) => {
+  "/:id/star",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const {
+        is_starred,
+      } = req.body;
 
-        try {
+      const result =
+        await pool.query(
+          `UPDATE messages m
 
-            const {
-                is_starred
-            } = req.body;
+           SET is_starred = $1
 
-            const result =
-                await pool.query(
-                    `UPDATE messages m
-                     SET is_starred = $1
-                     WHERE
-                        m.id = $2
-                        AND (
-                            m.sender_id = $3
-                            OR EXISTS (
-                                SELECT 1
-                                FROM message_recipients mr
-                                WHERE
-                                    mr.message_id = m.id
-                                    AND mr.recipient_id = $3
-                            )
-                        )
-                     RETURNING id, is_starred`,
-                    [
-                        Boolean(is_starred),
-                        Number(req.params.id),
-                        req.user.userId
-                    ]
-                );
+           WHERE
+             m.id = $2
 
-            if (
-                result.rows.length === 0
-            ) {
+             AND (
+               m.sender_id = $3
 
-                return res.status(404).json({
-                    message:
-                        "Message not found."
-                });
+               OR EXISTS (
+                 SELECT 1
 
-            }
+                 FROM message_recipients mr
 
-            res.json({
+                 WHERE mr.message_id = m.id
+                   AND mr.recipient_id = $3
+               )
+             )
 
-                message:
-                    "Star status updated.",
+           RETURNING id, is_starred`,
+          [
+            Boolean(is_starred),
+            Number(req.params.id),
+            userId(req),
+          ]
+        );
 
-                data:
-                    result.rows[0]
+      if (!result.rows.length) {
+        return res.status(404).json({
+          message:
+            "Message not found.",
+        });
+      }
 
-            });
+      res.json({
+        message:
+          "Star status updated.",
 
-        } catch (error) {
+        data:
+          result.rows[0],
+      });
+    } catch (error) {
+      console.error(
+        "Star status error:",
+        error
+      );
 
-            console.error(
-                "Star status error:",
-                error
-            );
-
-            res.status(500).json({
-
-                message:
-                    "Failed to update star status."
-
-            });
-
-        }
-
+      res.status(500).json({
+        message:
+          "Failed to update star status.",
+      });
     }
+  }
 );
+
 // ============================================================
 // DOWNLOAD ATTACHMENT
 // ============================================================
