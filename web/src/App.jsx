@@ -4,7 +4,7 @@ import "./App.css";
 
 
 
-const API_URL = "https://phonemail-backend-1bcr.onrender.com";
+const API_URL = "http://localhost:3000";
 
 
 
@@ -1922,7 +1922,7 @@ function App() {
     // Save the favorite status in the database
     try {
       const response = await fetch(
-        `${API_URL}/api/mail/${mail.id}/star`,
+        `${API_URL}/api/mail/message/${mail.id}/star`,
         {
           method: "PATCH",
           headers: {
