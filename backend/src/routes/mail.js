@@ -139,44 +139,80 @@ router.get(
   authMiddleware,
   async (req, res) => {
     try {
-      const result = await pool.query(
-        `SELECT
-            m.id,
-            m.conversation_id,
-            m.sender_id,
-            m.subject,
-            m.body,
-            m.is_read,
-            m.is_starred,
-            m.reply_to_message_id,
-            m.created_at,
+      const result =
+        await pool.query(
+            `SELECT
+                m.id,
+                m.conversation_id,
+                m.sender_id,
+                m.subject,
+                m.body,
+                m.is_read,
+                m.is_starred,
+                m.reply_to_message_id,
+                m.created_at,
 
-            u.phone_number AS sender_phone,
-            u.email_address AS sender_email,
-            u.display_name AS sender_name
+                u.phone_number AS sender_phone,
+                u.email_address AS sender_email,
+                u.display_name AS sender_name
 
-         FROM messages m
+            FROM messages m
 
-         JOIN users u
-           ON u.id = m.sender_id
+            JOIN users u
+                ON u.id = m.sender_id
 
-         WHERE m.is_deleted = false
-           AND m.is_spam = false
+            WHERE
+                m.conversation_id = $1
+                AND m.is_deleted = false
 
-           AND EXISTS (
-             SELECT 1
-             FROM message_recipients mr
-             WHERE mr.message_id = m.id
-               AND mr.recipient_id = $1
-           )
+            ORDER BY
+                m.created_at ASC`,
+            [conversationId]
+        );
 
-         ORDER BY m.created_at DESC`,
-        [userId(req)]
-      );
 
-      res.json({
-        messages: result.rows,
-      });
+    const messageIds =
+        result.rows.map(
+            (message) => message.id
+        );
+
+    let attachments = [];
+
+    if (messageIds.length > 0) {
+        const attachmentResult =
+            await pool.query(
+                `SELECT
+                    id,
+                    message_id,
+                    file_name,
+                    mime_type,
+                    file_size,
+                    created_at
+                FROM message_attachments
+                WHERE message_id = ANY($1::int[])
+                ORDER BY created_at ASC`,
+                [messageIds]
+            );
+
+        attachments =
+            attachmentResult.rows;
+    }
+
+
+    res.json({
+        messages:
+            result.rows.map(
+                (message) => ({
+                    ...message,
+                    attachments:
+                        attachments.filter(
+                            (attachment) =>
+                                Number(attachment.message_id) ===
+                                Number(message.id)
+                        ),
+                })
+            ),
+    });
     } catch (error) {
       console.error(
         "Inbox error:",
@@ -345,7 +381,7 @@ router.get(
             attachments:
               attachments.filter(
                 (a) =>
-                  a.message_id === m.id
+                  Number(a.message_id) === Number(m.id)
               ),
           })
         ),
