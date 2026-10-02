@@ -2317,60 +2317,87 @@ class ChatCard extends StatelessWidget {
             ),
           ],
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              onPressed: onStar,
-              visualDensity: VisualDensity.compact,
-              icon: Icon(
-                mail.isStarred
-                    ? Icons.star_rounded
-                    : Icons.star_border_rounded,
-                color: mail.isStarred ? pmBlue : pmMuted,
-              ),
-            ),
-            PopupMenuButton<String>(
-              padding: EdgeInsets.zero,
-              icon: const Icon(Icons.more_vert, color: pmMuted, size: 20),
-              onSelected: (value) {
-                if (value == 'trash') onTrash();
-                if (value == 'spam') onSpam();
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'trash',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_outline, color: Colors.redAccent),
-                      SizedBox(width: 8),
-                      Text('Move to Trash'),
-                    ],
-                  ),
+        trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: onStar,
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
                 ),
-                PopupMenuItem(
-                  value: 'spam',
-                  child: Row(
-                    children: [
-                      Icon(Icons.report_gmailerrorred_outlined),
-                      SizedBox(width: 8),
-                      Text('Report Spam'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (isUnread)
-              Container(
-                width: 7,
-                height: 7,
-                decoration: const BoxDecoration(
-                  color: pmBlue,
-                  shape: BoxShape.circle,
+                icon: Icon(
+                  mail.isStarred
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
+                  color: mail.isStarred ? pmBlue : pmMuted,
+                  size: 22,
                 ),
               ),
-          ],
-        ),
+
+              SizedBox(
+                width: 32,
+                height: 36,
+                child: PopupMenuButton<String>(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(
+                    Icons.more_vert,
+                    color: pmMuted,
+                    size: 20,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'trash') {
+                      onTrash();
+                    }
+
+                    if (value == 'spam') {
+                      onSpam();
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'trash',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
+                            color: Colors.redAccent,
+                          ),
+                          SizedBox(width: 8),
+                          Text('Move to Trash'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'spam',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.report_gmailerrorred_outlined,
+                          ),
+                          SizedBox(width: 8),
+                          Text('Report Spam'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (isUnread)
+                Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(left: 2),
+                  decoration: const BoxDecoration(
+                    color: pmBlue,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
+          ),
       ),
     );
   }

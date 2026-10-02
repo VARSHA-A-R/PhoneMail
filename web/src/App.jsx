@@ -4,7 +4,7 @@ import "./App.css";
 
 
 
-const API_URL = "http://localhost:3000";
+const API_URL = "https://phonemail-backend-1bcr.onrender.com";
 
 
 
@@ -1881,17 +1881,60 @@ function App() {
 
 
 
-  function handleOpenMail(mail) {
+async function handleOpenMail(mail) {
+  console.log("OPEN MAIL CLICKED:", mail);
+  try {
     setSelectedMail(mail);
+
+    const response = await fetch(
+      `${API_URL}/api/mail/conversation/${mail.conversation_id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to load conversation.");
+    }
+
+    const data = await response.json();
+
+    const conversationMessages =
+      data.messages || [];
+
+    const currentMessage =
+      conversationMessages.find(
+        (item) => item.id === mail.id
+      );
+
+    if (currentMessage) {
+      setSelectedMail(currentMessage);
+    }
 
     if (activeTab !== "sent") {
       setMessages((currentMessages) =>
         currentMessages.map((item) =>
-          item.id === mail.id ? { ...item, is_read: true } : item
+          item.id === mail.id
+            ? {
+                ...item,
+                is_read: true,
+                attachments:
+                  currentMessage?.attachments ||
+                  [],
+              }
+            : item
         )
       );
     }
+  } catch (err) {
+    console.error(
+      "Conversation loading error:",
+      err
+    );
   }
+}
 
 
 
@@ -2189,43 +2232,24 @@ function App() {
       }
 
       if (
-
         activeTab === "unread"
-
       ) {
-
         return !mail.is_read;
-
       }
-
-
-
       if (
-
         activeTab === "favorites"
-
       ) {
-
         return mail.is_starred;
-
       }
-
-
-
       if (
-
         activeTab === "attachments"
-
       ) {
-
-        return false;
-
+        return (
+          Array.isArray(mail.attachments) &&
+          mail.attachments.length > 0
+        );
       }
-
-
-
       return true;
-
     });
 
 
@@ -3668,6 +3692,92 @@ function App() {
               >
                 {selectedMail.body}
               </div>
+
+              {Array.isArray(selectedMail.attachments) 
+                && selectedMail.attachments.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: "18px",
+                      padding: "16px",
+                      borderRadius: "12px",
+                      background: "#f8f7fc",
+                      border: "1px solid #e6e3ef",
+                    }}
+                  >
+                    <strong
+                      style={{
+                        display: "block",
+                        marginBottom: "12px",
+                        color: "#2f2a3d",
+                      }}
+                    >
+                      📎 Attachments
+                    </strong>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      {selectedMail.attachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "12px",
+                            padding: "10px 12px",
+                            background: "#ffffff",
+                            borderRadius: "9px",
+                            border: "1px solid #e6e3ef",
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                color: "#2f2a3d",
+                              }}
+                            >
+                              📄 {attachment.file_name}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: "3px",
+                                fontSize: "12px",
+                                color: "#777184",
+                              }}
+                            >
+                              {attachment.mime_type || "File"}
+                            </div>
+                          </div>
+
+                          <a
+                            href={`${API_URL}/api/mail/attachment/${attachment.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: "8px",
+                              background: "#4f46e5",
+                              color: "#ffffff",
+                              textDecoration: "none",
+                              fontWeight: 600,
+                              fontSize: "13px",
+                            }}
+                          >
+                            Download
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
               <div
                 style={{
